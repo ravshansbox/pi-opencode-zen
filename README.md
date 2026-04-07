@@ -86,6 +86,16 @@ This is a proper pi extension package. The extension entry point is declared in 
 }
 ```
 
+## Updating Models
+
+The available models are fetched from the opencode.ai Zen API:
+
+```bash
+curl https://opencode.ai/zen/v1/models
+```
+
+This returns a JSON list of all available models. Free models (cost = 0) are filtered in the extension for anonymous/public key mode.
+
 ## Source layout
 
 - `src/index.ts` — extension entry point
