@@ -118,8 +118,8 @@ function streamOpencodeZen(
 	options?: SimpleStreamOptions,
 ): AssistantMessageEventStream {
 	const endpoint = endpoints[model.id];
-	if (!endpoint) {
-		throw new Error(`Unsupported OpenCode Zen model: ${model.id}`);
+	if (!endpoint || model.provider !== "opencode-zen") {
+		return streamSimpleOpenAICompletions(model as Model<"openai-completions">, context, options);
 	}
 
 	const wrappedModel = {
