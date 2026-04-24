@@ -86,15 +86,28 @@ This is a proper pi extension package. The extension entry point is declared in 
 }
 ```
 
-## Updating Models
+## Model filtering
 
-The available models are fetched from the opencode.ai Zen API:
+This extension mirrors OpenCode CLI behavior as closely as possible:
+
+- it fetches the live visible model IDs from the OpenCode Zen API
+- it fetches OpenCode provider metadata from `models.dev`
+- it filters out models with `status === "deprecated"`
+- in anonymous/public mode (`key = "public"`), it keeps only models where `models.dev` reports `cost.input === 0`
+
+Live model visibility source:
 
 ```bash
-curl https://opencode.ai/zen/v1/models
+curl -H 'Authorization: Bearer public' https://opencode.ai/zen/v1/models
 ```
 
-This returns a JSON list of all available models. Free models (cost = 0) are filtered in the extension for anonymous/public key mode.
+OpenCode metadata source:
+
+```bash
+curl https://models.dev/api.json
+```
+
+Note: the Zen `/models` endpoint does not include pricing or deprecation metadata, so the extension combines both sources.
 
 ## Source layout
 

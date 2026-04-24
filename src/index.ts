@@ -10,23 +10,29 @@ import {
 	type SimpleStreamOptions,
 } from "@mariozechner/pi-ai";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
-// Free models (visible with public key) - cost is 0 for input and output
-const FREE_MODEL_IDS = new Set([
-	"big-pickle",
-	"glm-4.6",
-	"glm-4.7",
-	"glm-5",
-	"kimi-k2",
-	"kimi-k2-thinking",
-	"kimi-k2.5",
-	"minimax-m2.1",
-	"minimax-m2.5",
-	"minimax-m2.5-free",
-	"nemotron-3-super-free",
-	"qwen3.6-plus-free",
-	"trinity-large-preview-free",
-]);
+type Backend = "anthropic-messages" | "google-generative-ai" | "openai-completions" | "openai-responses";
+
+interface EndpointConfig {
+	api: Backend;
+	baseUrl: string;
+}
+
+interface ModelsDevModelInfo {
+	status?: string | null;
+	cost?: {
+		input?: number | null;
+		output?: number | null;
+		cache_read?: number | null;
+		cache_write?: number | null;
+	} | null;
+}
+
+const API_KEY = "OPENCODE_API_KEY";
+const BASE_URL = "https://opencode.ai/zen/v1";
+const MODELS_DEV_URL = "https://models.dev/api.json";
 
 // Full model list - updated from models.dev
 const allModels = [
@@ -69,28 +75,7 @@ const allModels = [
 	{ id: "nemotron-3-super-free", name: "Nemotron 3 Super Free", reasoning: true, input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 204800, maxTokens: 128000 },
 	{ id: "qwen3.6-plus-free", name: "Qwen3.6 Plus Free", reasoning: true, input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 1048576, maxTokens: 64000 },
 	{ id: "trinity-large-preview-free", name: "Trinity Large Preview", reasoning: false, input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 131072, maxTokens: 131072 },
-];
-
-type Backend = "anthropic-messages" | "google-generative-ai" | "openai-completions" | "openai-responses";
-
-interface EndpointConfig {
-	api: Backend;
-	baseUrl: string;
-}
-
-const API_KEY = "OPENCODE_API_KEY";
-const BASE_URL = "https://opencode.ai/zen/v1";
-
-function opencodeHeaders(): Record<string, string> {
-	const id = () => crypto.randomUUID().replace(/-/g, "").slice(0, 26);
-	return {
-		"User-Agent": "opencode/latest/1.3.15/cli",
-		"x-opencode-client": "cli",
-		"x-opencode-session": id(),
-		"x-opencode-project": id(),
-		"x-opencode-request": id(),
-	};
-}
+] as const;
 
 const endpoints: Record<string, EndpointConfig> = {
 	// GPT models - openai-responses
@@ -141,6 +126,85 @@ const endpoints: Record<string, EndpointConfig> = {
 	"nemotron-3-super-free": { api: "openai-completions", baseUrl: BASE_URL },
 };
 
+function getConfiguredApiKey(): string | undefined {
+	const env = process.env[API_KEY]?.trim();
+	if (env) return env;
+
+	try {
+		const authPath = join(process.env.HOME ?? "", ".pi", "agent", "auth.json");
+		const auth = JSON.parse(readFileSync(authPath, "utf8")) as Record<string, { key?: string }>;
+		const key = auth?.["opencode-zen"]?.key?.trim();
+		return key || undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+async function fetchVisibleModelIds(apiKey: string): Promise<Set<string> | undefined> {
+	try {
+		const response = await fetch(`${BASE_URL}/models`, {
+			headers: {
+				Authorization: `Bearer ${apiKey}`,
+				...opencodeHeaders(),
+			},
+		});
+		if (!response.ok) return undefined;
+		const json = (await response.json()) as { data?: Array<{ id?: string }> };
+		return new Set((json.data ?? []).map((m) => m.id).filter((id): id is string => Boolean(id)));
+	} catch {
+		return undefined;
+	}
+}
+
+async function fetchModelsDevInfo(): Promise<Record<string, ModelsDevModelInfo> | undefined> {
+	try {
+		const response = await fetch(MODELS_DEV_URL);
+		if (!response.ok) return undefined;
+		const json = (await response.json()) as {
+			opencode?: { models?: Record<string, ModelsDevModelInfo> };
+		};
+		return json.opencode?.models;
+	} catch {
+		return undefined;
+	}
+}
+
+function isPublicMode(apiKey?: string): boolean {
+	return !apiKey || apiKey === "public";
+}
+
+function isFreeModel(model: ModelsDevModelInfo | undefined): boolean {
+	const cost = model?.cost;
+	if (!cost) return false;
+	return (cost.input ?? 0) === 0;
+}
+
+function getVisibleModels(
+	visibleIds?: Set<string>,
+	modelsDevInfo?: Record<string, ModelsDevModelInfo>,
+	publicMode = false,
+): typeof allModels {
+	let models = visibleIds ? allModels.filter((m) => visibleIds.has(m.id)) : allModels;
+	if (modelsDevInfo) {
+		models = models.filter((m) => modelsDevInfo[m.id]?.status !== "deprecated");
+		if (publicMode) {
+			models = models.filter((m) => isFreeModel(modelsDevInfo[m.id]));
+		}
+	}
+	return models as typeof allModels;
+}
+
+function opencodeHeaders(): Record<string, string> {
+	const id = () => crypto.randomUUID().replace(/-/g, "").slice(0, 26);
+	return {
+		"User-Agent": "opencode/latest/1.3.15/cli",
+		"x-opencode-client": "cli",
+		"x-opencode-session": id(),
+		"x-opencode-project": id(),
+		"x-opencode-request": id(),
+	};
+}
+
 function streamOpencodeZen(
 	model: Model<Api>,
 	context: Context,
@@ -178,12 +242,18 @@ function streamOpencodeZen(
 	}
 }
 
-export default function (pi: ExtensionAPI): void {
+export default async function (pi: ExtensionAPI): Promise<void> {
+	const apiKey = getConfiguredApiKey();
+	const [visibleIds, modelsDevInfo] = await Promise.all([
+		apiKey ? fetchVisibleModelIds(apiKey) : Promise.resolve(undefined),
+		fetchModelsDevInfo(),
+	]);
+
 	pi.registerProvider("opencode-zen", {
 		baseUrl: BASE_URL,
 		apiKey: API_KEY,
 		api: "openai-completions",
 		streamSimple: streamOpencodeZen,
-		models: allModels.filter((m) => FREE_MODEL_IDS.has(m.id)),
+		models: getVisibleModels(visibleIds, modelsDevInfo, isPublicMode(apiKey)),
 	});
 }
