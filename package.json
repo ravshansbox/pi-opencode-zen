@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "pi": {
-    "extensions": ["./src/index.ts"]
+    "extensions": [
+      "./index.ts"
+    ]
   },
   "peerDependencies": {
     "@mariozechner/pi-ai": "*",
