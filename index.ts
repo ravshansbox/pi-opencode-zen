@@ -8,8 +8,8 @@ import {
 	streamSimpleOpenAIResponses,
 	type Model,
 	type SimpleStreamOptions,
-} from "@mariozechner/pi-ai";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-ai";
+import type { ExtensionAPI, ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -183,15 +183,26 @@ function getVisibleModels(
 	visibleIds?: Set<string>,
 	modelsDevInfo?: Record<string, ModelsDevModelInfo>,
 	publicMode = false,
-): typeof allModels {
-	let models = visibleIds ? allModels.filter((m) => visibleIds.has(m.id)) : allModels;
+): ProviderModelConfig[] {
+	let models = visibleIds ? allModels.filter((m) => visibleIds.has(m.id)) : [...allModels];
 	if (modelsDevInfo) {
 		models = models.filter((m) => modelsDevInfo[m.id]?.status !== "deprecated");
 		if (publicMode) {
 			models = models.filter((m) => isFreeModel(modelsDevInfo[m.id]));
 		}
 	}
-	return models as typeof allModels;
+	return models.map((model) => {
+		const input = model.input.filter((value): value is "text" | "image" => value === "text" || value === "image") as ("text" | "image")[];
+		return {
+			id: model.id,
+			name: model.name,
+			reasoning: model.reasoning,
+			input,
+			cost: { ...model.cost },
+			contextWindow: model.contextWindow,
+			maxTokens: model.maxTokens,
+		};
+	});
 }
 
 function opencodeHeaders(): Record<string, string> {
