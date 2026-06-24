@@ -2,6 +2,7 @@
   "name": "pi-opencode-zen",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "files": [
     "index.ts",
     "README.md",
