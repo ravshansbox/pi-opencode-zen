@@ -2,6 +2,11 @@
   "name": "pi-opencode-zen",
   "version": "0.1.0",
   "private": true,
+  "files": [
+    "index.ts",
+    "README.md",
+    "LICENSE"
+  ],
   "type": "module",
   "pi": {
     "extensions": [
@@ -14,5 +19,8 @@
   },
   "devDependencies": {
     "typescript": "^6.0.3"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
   }
 }
