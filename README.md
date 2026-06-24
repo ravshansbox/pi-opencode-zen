@@ -6,7 +6,7 @@ It registers the `opencode-zen` provider for pi and exposes OpenCode Zen models 
 
 ## Install
 
-Install it as a pi package:
+Install it as a local/private pi package:
 
 ```bash
 pi install git:github.com/ravshansbox/pi-opencode-zen
@@ -76,12 +76,12 @@ Anonymous mode in auth storage:
 
 ## Package entry
 
-This is a proper pi extension package. The extension entry point is declared in `package.json`:
+This package stays `private: true` and is intended for local/private use. The extension entry point is declared in `package.json`:
 
 ```json
 {
   "pi": {
-    "extensions": ["./src/index.ts"]
+    "extensions": ["./index.ts"]
   }
 }
 ```
@@ -111,5 +111,5 @@ Note: the Zen `/models` endpoint does not include pricing or deprecation metadat
 
 ## Source layout
 
-- `src/index.ts` — extension entry point
+- `index.ts` — extension entry point
 - `package.json` — pi package metadata
