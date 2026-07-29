@@ -1,5 +1,5 @@
 {
-  "name": "pi-opencode-zen",
+  "name": "@ravshansbox/pi-opencode-zen",
   "version": "0.1.0",
   "license": "MIT",
   "files": [
@@ -18,9 +18,28 @@
     "@earendil-works/pi-coding-agent": "*"
   },
   "devDependencies": {
+    "@types/node": "^26.1.2",
     "typescript": "^6.0.3"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ravshansbox/pi-opencode-zen.git"
+  },
+  "homepage": "https://github.com/ravshansbox/pi-opencode-zen#readme",
+  "bugs": {
+    "url": "https://github.com/ravshansbox/pi-opencode-zen/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "provider"
+  ],
+  "description": "OpenCode Zen provider extension for pi",
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck"
   }
 }
