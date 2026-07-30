@@ -1,26 +1,9 @@
 {
   "name": "@ravshansbox/pi-opencode-zen",
   "version": "0.1.0",
+  "description": "OpenCode Zen provider extension for pi",
   "license": "MIT",
-  "files": [
-    "index.ts",
-    "README.md",
-    "LICENSE"
-  ],
   "type": "module",
-  "pi": {
-    "extensions": [
-      "./index.ts"
-    ]
-  },
-  "peerDependencies": {
-    "@earendil-works/pi-ai": "*",
-    "@earendil-works/pi-coding-agent": "*"
-  },
-  "devDependencies": {
-    "@types/node": "^26.1.2",
-    "typescript": "^6.0.3"
-  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/ravshansbox/pi-opencode-zen.git"
@@ -37,7 +20,24 @@
     "pi-extension",
     "provider"
   ],
-  "description": "OpenCode Zen provider extension for pi",
+  "files": [
+    "index.ts",
+    "README.md",
+    "LICENSE"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.2",
+    "typescript": "^6.0.3"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "check": "npm run typecheck"
