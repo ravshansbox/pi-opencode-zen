@@ -2,13 +2,13 @@ import {
   type Api,
   type AssistantMessageEventStream,
   type Context,
-  streamSimpleAnthropic,
-  streamSimpleGoogle,
-  streamSimpleOpenAICompletions,
-  streamSimpleOpenAIResponses,
   type Model,
   type SimpleStreamOptions,
 } from '@earendil-works/pi-ai';
+import { anthropicMessagesApi } from '@earendil-works/pi-ai/api/anthropic-messages.lazy';
+import { googleGenerativeAIApi } from '@earendil-works/pi-ai/api/google-generative-ai.lazy';
+import { openAICompletionsApi } from '@earendil-works/pi-ai/api/openai-completions.lazy';
+import { openAIResponsesApi } from '@earendil-works/pi-ai/api/openai-responses.lazy';
 import type {
   ExtensionAPI,
   ProviderModelConfig,
@@ -563,11 +563,7 @@ function streamOpencodeZen(
 ): AssistantMessageEventStream {
   const endpoint = endpoints[model.id];
   if (!endpoint || model.provider !== 'opencode-zen') {
-    return streamSimpleOpenAICompletions(
-      model as Model<'openai-completions'>,
-      context,
-      options,
-    );
+    return openAICompletionsApi().streamSimple(model, context, options);
   }
 
   const wrappedModel = {
@@ -583,26 +579,26 @@ function streamOpencodeZen(
 
   switch (endpoint.api) {
     case 'anthropic-messages':
-      return streamSimpleAnthropic(
-        wrappedModel as Model<'anthropic-messages'>,
+      return anthropicMessagesApi().streamSimple(
+        wrappedModel,
         context,
         wrappedOptions,
       );
     case 'google-generative-ai':
-      return streamSimpleGoogle(
-        wrappedModel as Model<'google-generative-ai'>,
+      return googleGenerativeAIApi().streamSimple(
+        wrappedModel,
         context,
         wrappedOptions,
       );
     case 'openai-responses':
-      return streamSimpleOpenAIResponses(
-        wrappedModel as Model<'openai-responses'>,
+      return openAIResponsesApi().streamSimple(
+        wrappedModel,
         context,
         wrappedOptions,
       );
     case 'openai-completions':
-      return streamSimpleOpenAICompletions(
-        wrappedModel as Model<'openai-completions'>,
+      return openAICompletionsApi().streamSimple(
+        wrappedModel,
         context,
         wrappedOptions,
       );
