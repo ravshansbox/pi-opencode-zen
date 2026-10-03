@@ -9,18 +9,12 @@ import { anthropicMessagesApi } from '@earendil-works/pi-ai/api/anthropic-messag
 import { googleGenerativeAIApi } from '@earendil-works/pi-ai/api/google-generative-ai.lazy';
 import { openAICompletionsApi } from '@earendil-works/pi-ai/api/openai-completions.lazy';
 import { openAIResponsesApi } from '@earendil-works/pi-ai/api/openai-responses.lazy';
-import type {
-  ExtensionAPI,
-  ProviderModelConfig,
-} from '@earendil-works/pi-coding-agent';
+import type { ExtensionAPI, ProviderModelConfig } from '@earendil-works/pi-coding-agent';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 type Backend =
-  | 'anthropic-messages'
-  | 'google-generative-ai'
-  | 'openai-completions'
-  | 'openai-responses';
+  'anthropic-messages' | 'google-generative-ai' | 'openai-completions' | 'openai-responses';
 
 interface EndpointConfig {
   api: Backend;
@@ -453,16 +447,8 @@ function getConfiguredApiKey(): string | undefined {
   if (env) return env;
 
   try {
-    const authPath = join(
-      process.env['HOME'] ?? '',
-      '.pi',
-      'agent',
-      'auth.json',
-    );
-    const auth = JSON.parse(readFileSync(authPath, 'utf8')) as Record<
-      string,
-      { key?: string }
-    >;
+    const authPath = join(process.env['HOME'] ?? '', '.pi', 'agent', 'auth.json');
+    const auth = JSON.parse(readFileSync(authPath, 'utf8')) as Record<string, { key?: string }>;
     const key = auth?.['opencode-zen']?.key?.trim();
     return key || undefined;
   } catch {
@@ -470,28 +456,20 @@ function getConfiguredApiKey(): string | undefined {
   }
 }
 
-async function fetchVisibleModelIds(
-  apiKey: string,
-): Promise<Set<string> | undefined> {
+async function fetchVisibleModelIds(apiKey: string): Promise<Set<string> | undefined> {
   try {
     const response = await fetch(`${BASE_URL}/models`, {
       headers: { Authorization: `Bearer ${apiKey}`, ...opencodeHeaders() },
     });
     if (!response.ok) return undefined;
     const json = (await response.json()) as { data?: Array<{ id?: string }> };
-    return new Set(
-      (json.data ?? [])
-        .map((m) => m.id)
-        .filter((id): id is string => Boolean(id)),
-    );
+    return new Set((json.data ?? []).map((m) => m.id).filter((id): id is string => Boolean(id)));
   } catch {
     return undefined;
   }
 }
 
-async function fetchModelsDevInfo(): Promise<
-  Record<string, ModelsDevModelInfo> | undefined
-> {
+async function fetchModelsDevInfo(): Promise<Record<string, ModelsDevModelInfo> | undefined> {
   try {
     const response = await fetch(MODELS_DEV_URL);
     if (!response.ok) return undefined;
@@ -519,9 +497,7 @@ function getVisibleModels(
   modelsDevInfo?: Record<string, ModelsDevModelInfo>,
   publicMode = false,
 ): ProviderModelConfig[] {
-  let models = visibleIds
-    ? allModels.filter((m) => visibleIds.has(m.id))
-    : [...allModels];
+  let models = visibleIds ? allModels.filter((m) => visibleIds.has(m.id)) : [...allModels];
   if (modelsDevInfo) {
     models = models.filter((m) => modelsDevInfo[m.id]?.status !== 'deprecated');
     if (publicMode) {
@@ -530,8 +506,7 @@ function getVisibleModels(
   }
   return models.map((model) => {
     const input = model.input.filter(
-      (value): value is 'text' | 'image' =>
-        value === 'text' || value === 'image',
+      (value): value is 'text' | 'image' => value === 'text' || value === 'image',
     ) as ('text' | 'image')[];
     return {
       id: model.id,
@@ -579,29 +554,13 @@ function streamOpencodeZen(
 
   switch (endpoint.api) {
     case 'anthropic-messages':
-      return anthropicMessagesApi().streamSimple(
-        wrappedModel,
-        context,
-        wrappedOptions,
-      );
+      return anthropicMessagesApi().streamSimple(wrappedModel, context, wrappedOptions);
     case 'google-generative-ai':
-      return googleGenerativeAIApi().streamSimple(
-        wrappedModel,
-        context,
-        wrappedOptions,
-      );
+      return googleGenerativeAIApi().streamSimple(wrappedModel, context, wrappedOptions);
     case 'openai-responses':
-      return openAIResponsesApi().streamSimple(
-        wrappedModel,
-        context,
-        wrappedOptions,
-      );
+      return openAIResponsesApi().streamSimple(wrappedModel, context, wrappedOptions);
     case 'openai-completions':
-      return openAICompletionsApi().streamSimple(
-        wrappedModel,
-        context,
-        wrappedOptions,
-      );
+      return openAICompletionsApi().streamSimple(wrappedModel, context, wrappedOptions);
   }
 }
 
