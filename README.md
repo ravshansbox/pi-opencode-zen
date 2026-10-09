@@ -4,6 +4,26 @@ OpenCode Zen provider extension for pi.
 
 ## Install
 
+### Option 1: From GitHub (Branch `fix/pi-compat-import`)
+
+To install the latest tested fix branch directly:
+
+```bash
+# Clone the fix branch
+git clone -b fix/pi-compat-import https://github.com/danprat/pi-opencode-zen.git
+
+# Install into pi
+pi install ./pi-opencode-zen
+```
+
+Or install directly from the git repository:
+
+```bash
+pi install git:github.com/danprat/pi-opencode-zen
+```
+
+### Option 2: From npm (Official Release)
+
 ```bash
 pi install npm:@ravshansbox/pi-opencode-zen
 ```
@@ -21,15 +41,21 @@ The extension:
   - `x-opencode-project`
   - `x-opencode-request`
 - sets the OpenCode CLI-style `User-Agent`
+- attaches required core tools (`bash`, `read`) to satisfy the OpenCode free-tier validation gate
 
-### Model filtering
+### Model filtering and protocol routing
 
 This extension mirrors OpenCode CLI behaviour as closely as possible:
 
-- it fetches the live visible model IDs from the OpenCode Zen API
-- it fetches OpenCode provider metadata from `models.dev`
+- it fetches live visible model IDs dynamically from the OpenCode Zen API
+- it synchronises model specifications (context window, token limits, modalities) from `models.dev`
 - it filters out models with `status === "deprecated"`
-- in anonymous/public mode (`key = "public"`), it keeps only models where `models.dev` reports `cost.input === 0`
+- in anonymous/public mode (`key = "public"`), it automatically admits all free-tier and zero-cost models
+- it dynamically routes model families to their supported protocols:
+  - `openai-responses` for GPT and Meta Muse Spark series
+  - `anthropic-messages` for Claude series
+  - `google-generative-ai` for Gemini series
+  - `openai-completions` for standard models
 
 Live model visibility source:
 
