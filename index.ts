@@ -4,11 +4,11 @@ import {
   type Model,
   type SimpleStreamOptions,
   type TranscriptContext,
-} from '@earendil-works/pi-ai';
-import { anthropicMessagesApi } from '@earendil-works/pi-ai/api/anthropic-messages.lazy';
-import { googleGenerativeAIApi } from '@earendil-works/pi-ai/api/google-generative-ai.lazy';
-import { openAICompletionsApi } from '@earendil-works/pi-ai/api/openai-completions.lazy';
-import { openAIResponsesApi } from '@earendil-works/pi-ai/api/openai-responses.lazy';
+  anthropicMessagesApi,
+  googleGenerativeAIApi,
+  openAICompletionsApi,
+  openAIResponsesApi,
+} from '@earendil-works/pi-ai/compat';
 import type { ExtensionAPI, ProviderModelConfig } from '@earendil-works/pi-coding-agent';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
