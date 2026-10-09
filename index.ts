@@ -3,7 +3,10 @@ import {
   type AssistantMessageEventStream,
   type Model,
   type SimpleStreamOptions,
+  type SystemMessage,
+  type Tool,
   type TranscriptContext,
+  Type,
   anthropicMessagesApi,
   googleGenerativeAIApi,
   openAICompletionsApi,
@@ -520,15 +523,64 @@ function getVisibleModels(
   });
 }
 
+const BASE62 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+
+function canonicalId(prefix: 'ses_' | 'msg_'): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  const hexPart = Array.from(bytes.subarray(0, 6), (b) => b.toString(16).padStart(2, '0')).join('');
+  const b62Part = Array.from(bytes.subarray(6, 20), (b) => BASE62[b % 62]).join('');
+  return `${prefix}${hexPart}${b62Part}`;
+}
+
 function opencodeHeaders(): Record<string, string> {
-  const id = () => crypto.randomUUID().replace(/-/g, '').slice(0, 26);
   return {
-    'User-Agent': 'opencode/latest/1.3.15/cli',
+    'User-Agent': 'opencode/1.18.31',
     'x-opencode-client': 'cli',
-    'x-opencode-session': id(),
-    'x-opencode-project': id(),
-    'x-opencode-request': id(),
+    'x-opencode-session': canonicalId('ses_'),
+    'x-opencode-request': canonicalId('msg_'),
+    'x-opencode-project': 'global',
+    Accept: 'text/event-stream',
   };
+}
+
+function ensureOpencodeGateTools(context: TranscriptContext): TranscriptContext {
+  const messages = [...context.messages];
+  const first = messages[0];
+  const gateTools: Tool[] = [
+    {
+      name: 'bash',
+      description: 'Execute bash command',
+      parameters: Type.Object({ command: Type.String() }),
+    },
+    {
+      name: 'read',
+      description: 'Read file',
+      parameters: Type.Object({ path: Type.String() }),
+    },
+  ];
+
+  if (first && first.role === 'system') {
+    const existing = first.toolsAdded ?? [];
+    const existingNames = new Set(existing.map((t) => t.name));
+    const missing = gateTools.filter((t) => !existingNames.has(t.name));
+    if (missing.length > 0) {
+      const updatedFirst: SystemMessage = {
+        ...first,
+        toolsAdded: [...existing, ...missing],
+      };
+      messages[0] = updatedFirst;
+    }
+  } else {
+    const initialMessage: SystemMessage = {
+      role: 'system',
+      content: '',
+      toolsAdded: gateTools,
+      timestamp: 0,
+    };
+    messages.unshift(initialMessage);
+  }
+
+  return { ...context, messages };
 }
 
 function streamOpencodeZen(
@@ -549,18 +601,20 @@ function streamOpencodeZen(
 
   const wrappedOptions: SimpleStreamOptions = {
     ...options,
-    headers: { ...opencodeHeaders(), ...options?.headers },
+    headers: { ...options?.headers, ...opencodeHeaders() },
   };
+
+  const gateContext = ensureOpencodeGateTools(context);
 
   switch (endpoint.api) {
     case 'anthropic-messages':
-      return anthropicMessagesApi().streamSimple(wrappedModel, context, wrappedOptions);
+      return anthropicMessagesApi().streamSimple(wrappedModel, gateContext, wrappedOptions);
     case 'google-generative-ai':
-      return googleGenerativeAIApi().streamSimple(wrappedModel, context, wrappedOptions);
+      return googleGenerativeAIApi().streamSimple(wrappedModel, gateContext, wrappedOptions);
     case 'openai-responses':
-      return openAIResponsesApi().streamSimple(wrappedModel, context, wrappedOptions);
+      return openAIResponsesApi().streamSimple(wrappedModel, gateContext, wrappedOptions);
     case 'openai-completions':
-      return openAICompletionsApi().streamSimple(wrappedModel, context, wrappedOptions);
+      return openAICompletionsApi().streamSimple(wrappedModel, gateContext, wrappedOptions);
   }
 }
 
