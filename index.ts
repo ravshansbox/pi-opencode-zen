@@ -25,7 +25,16 @@ interface EndpointConfig {
 }
 
 interface ModelsDevModelInfo {
+  name?: string;
   status?: string | null;
+  reasoning?: boolean;
+  modalities?: {
+    input?: string[];
+  };
+  limit?: {
+    context?: number;
+    output?: number;
+  };
   cost?: {
     input?: number | null;
     output?: number | null;
@@ -489,7 +498,8 @@ function isPublicMode(apiKey?: string): boolean {
   return !apiKey || apiKey === 'public';
 }
 
-function isFreeModel(model: ModelsDevModelInfo | undefined): boolean {
+function isFreeModel(id: string, model: ModelsDevModelInfo | undefined): boolean {
+  if (id.endsWith('-free') || id === 'big-pickle') return true;
   const cost = model?.cost;
   if (!cost) return false;
   return (cost.input ?? 0) === 0;
@@ -500,18 +510,13 @@ function getVisibleModels(
   modelsDevInfo?: Record<string, ModelsDevModelInfo>,
   publicMode = false,
 ): ProviderModelConfig[] {
-  let models = visibleIds ? allModels.filter((m) => visibleIds.has(m.id)) : [...allModels];
-  if (modelsDevInfo) {
-    models = models.filter((m) => modelsDevInfo[m.id]?.status !== 'deprecated');
-    if (publicMode) {
-      models = models.filter((m) => isFreeModel(modelsDevInfo[m.id]));
-    }
-  }
-  return models.map((model) => {
+  const modelMap = new Map<string, ProviderModelConfig>();
+
+  for (const model of allModels) {
     const input = model.input.filter(
       (value): value is 'text' | 'image' => value === 'text' || value === 'image',
     ) as ('text' | 'image')[];
-    return {
+    modelMap.set(model.id, {
       id: model.id,
       name: model.name,
       reasoning: model.reasoning,
@@ -519,8 +524,59 @@ function getVisibleModels(
       cost: { ...model.cost },
       contextWindow: model.contextWindow,
       maxTokens: model.maxTokens,
-    };
-  });
+    });
+  }
+
+  if (visibleIds) {
+    for (const id of visibleIds) {
+      const dev = modelsDevInfo?.[id];
+      if (dev && dev.status !== 'deprecated') {
+        const input = (dev.modalities?.input ?? ['text']).filter(
+          (value): value is 'text' | 'image' => value === 'text' || value === 'image',
+        );
+        modelMap.set(id, {
+          id,
+          name: dev.name || id,
+          reasoning: Boolean(dev.reasoning),
+          input: input.length > 0 ? input : ['text'],
+          cost: {
+            input: dev.cost?.input ?? 0,
+            output: dev.cost?.output ?? 0,
+            cacheRead: dev.cost?.cache_read ?? 0,
+            cacheWrite: dev.cost?.cache_write ?? 0,
+          },
+          contextWindow: dev.limit?.context ?? 200000,
+          maxTokens: dev.limit?.output ?? 64000,
+        });
+      } else if (!modelMap.has(id) && (id.endsWith('-free') || id === 'big-pickle')) {
+        modelMap.set(id, {
+          id,
+          name: id,
+          reasoning: true,
+          input: ['text'],
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+          contextWindow: 200000,
+          maxTokens: 64000,
+        });
+      }
+    }
+  }
+
+  let models = Array.from(modelMap.values());
+
+  if (visibleIds) {
+    models = models.filter((m) => visibleIds.has(m.id));
+  }
+
+  if (modelsDevInfo) {
+    models = models.filter((m) => modelsDevInfo[m.id]?.status !== 'deprecated');
+  }
+
+  if (publicMode) {
+    models = models.filter((m) => isFreeModel(m.id, modelsDevInfo?.[m.id]));
+  }
+
+  return models;
 }
 
 const BASE62 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
@@ -583,15 +639,24 @@ function ensureOpencodeGateTools(context: TranscriptContext): TranscriptContext 
   return { ...context, messages };
 }
 
+function getEndpointConfig(modelId: string): EndpointConfig {
+  if (endpoints[modelId]) return endpoints[modelId];
+  if (modelId.startsWith('claude-')) return { api: 'anthropic-messages', baseUrl: BASE_URL };
+  if (modelId.startsWith('gemini-')) return { api: 'google-generative-ai', baseUrl: BASE_URL };
+  if (modelId.startsWith('gpt-')) return { api: 'openai-responses', baseUrl: BASE_URL };
+  return { api: 'openai-completions', baseUrl: BASE_URL };
+}
+
 function streamOpencodeZen(
   model: Model<Api>,
   context: TranscriptContext,
   options?: SimpleStreamOptions,
 ): AssistantMessageEventStream {
-  const endpoint = endpoints[model.id];
-  if (!endpoint || model.provider !== 'opencode-zen') {
+  if (model.provider !== 'opencode-zen') {
     return openAICompletionsApi().streamSimple(model, context, options);
   }
+
+  const endpoint = getEndpointConfig(model.id);
 
   const wrappedModel = {
     ...model,
