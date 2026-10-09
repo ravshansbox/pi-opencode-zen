@@ -5,7 +5,7 @@ OpenCode Zen provider extension for pi.
 ## Install
 
 ```bash
-pi install git:github.com/ravshansbox/pi-opencode-zen
+pi install npm:@ravshansbox/pi-opencode-zen
 ```
 
 ## Usage
