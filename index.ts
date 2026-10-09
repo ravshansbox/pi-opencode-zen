@@ -3,12 +3,15 @@ import {
   type AssistantMessageEventStream,
   type Model,
   type SimpleStreamOptions,
+  type SystemMessage,
+  type Tool,
   type TranscriptContext,
-} from '@earendil-works/pi-ai';
-import { anthropicMessagesApi } from '@earendil-works/pi-ai/api/anthropic-messages.lazy';
-import { googleGenerativeAIApi } from '@earendil-works/pi-ai/api/google-generative-ai.lazy';
-import { openAICompletionsApi } from '@earendil-works/pi-ai/api/openai-completions.lazy';
-import { openAIResponsesApi } from '@earendil-works/pi-ai/api/openai-responses.lazy';
+  Type,
+  anthropicMessagesApi,
+  googleGenerativeAIApi,
+  openAICompletionsApi,
+  openAIResponsesApi,
+} from '@earendil-works/pi-ai/compat';
 import type { ExtensionAPI, ProviderModelConfig } from '@earendil-works/pi-coding-agent';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -22,7 +25,16 @@ interface EndpointConfig {
 }
 
 interface ModelsDevModelInfo {
+  name?: string;
   status?: string | null;
+  reasoning?: boolean;
+  modalities?: {
+    input?: string[];
+  };
+  limit?: {
+    context?: number;
+    output?: number;
+  };
   cost?: {
     input?: number | null;
     output?: number | null;
@@ -420,6 +432,11 @@ const endpoints: Record<string, EndpointConfig> = {
   'gemini-3.1-pro': { api: 'google-generative-ai', baseUrl: BASE_URL },
   'gemini-3-pro': { api: 'google-generative-ai', baseUrl: BASE_URL },
   'gemini-3-flash': { api: 'google-generative-ai', baseUrl: BASE_URL },
+  // Muse models - openai-responses
+  'muse-spark-1.3': { api: 'openai-responses', baseUrl: BASE_URL },
+  'muse-spark-1.3-contributor-free': { api: 'openai-responses', baseUrl: BASE_URL },
+  'muse-spark-1.2': { api: 'openai-responses', baseUrl: BASE_URL },
+  'muse-spark-1.2-contributor-free': { api: 'openai-responses', baseUrl: BASE_URL },
   // GLM models - openai-completions
   'glm-5': { api: 'openai-completions', baseUrl: BASE_URL },
   'glm-4.7': { api: 'openai-completions', baseUrl: BASE_URL },
@@ -486,7 +503,8 @@ function isPublicMode(apiKey?: string): boolean {
   return !apiKey || apiKey === 'public';
 }
 
-function isFreeModel(model: ModelsDevModelInfo | undefined): boolean {
+function isFreeModel(id: string, model: ModelsDevModelInfo | undefined): boolean {
+  if (id.endsWith('-free') || id === 'big-pickle') return true;
   const cost = model?.cost;
   if (!cost) return false;
   return (cost.input ?? 0) === 0;
@@ -497,18 +515,13 @@ function getVisibleModels(
   modelsDevInfo?: Record<string, ModelsDevModelInfo>,
   publicMode = false,
 ): ProviderModelConfig[] {
-  let models = visibleIds ? allModels.filter((m) => visibleIds.has(m.id)) : [...allModels];
-  if (modelsDevInfo) {
-    models = models.filter((m) => modelsDevInfo[m.id]?.status !== 'deprecated');
-    if (publicMode) {
-      models = models.filter((m) => isFreeModel(modelsDevInfo[m.id]));
-    }
-  }
-  return models.map((model) => {
+  const modelMap = new Map<string, ProviderModelConfig>();
+
+  for (const model of allModels) {
     const input = model.input.filter(
       (value): value is 'text' | 'image' => value === 'text' || value === 'image',
     ) as ('text' | 'image')[];
-    return {
+    modelMap.set(model.id, {
       id: model.id,
       name: model.name,
       reasoning: model.reasoning,
@@ -516,19 +529,129 @@ function getVisibleModels(
       cost: { ...model.cost },
       contextWindow: model.contextWindow,
       maxTokens: model.maxTokens,
-    };
-  });
+    });
+  }
+
+  if (visibleIds) {
+    for (const id of visibleIds) {
+      const dev = modelsDevInfo?.[id];
+      if (dev && dev.status !== 'deprecated') {
+        const input = (dev.modalities?.input ?? ['text']).filter(
+          (value): value is 'text' | 'image' => value === 'text' || value === 'image',
+        );
+        modelMap.set(id, {
+          id,
+          name: dev.name || id,
+          reasoning: Boolean(dev.reasoning),
+          input: input.length > 0 ? input : ['text'],
+          cost: {
+            input: dev.cost?.input ?? 0,
+            output: dev.cost?.output ?? 0,
+            cacheRead: dev.cost?.cache_read ?? 0,
+            cacheWrite: dev.cost?.cache_write ?? 0,
+          },
+          contextWindow: dev.limit?.context ?? 200000,
+          maxTokens: dev.limit?.output ?? 64000,
+        });
+      } else if (!modelMap.has(id) && (id.endsWith('-free') || id === 'big-pickle')) {
+        modelMap.set(id, {
+          id,
+          name: id,
+          reasoning: true,
+          input: ['text'],
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+          contextWindow: 200000,
+          maxTokens: 64000,
+        });
+      }
+    }
+  }
+
+  let models = Array.from(modelMap.values());
+
+  if (visibleIds) {
+    models = models.filter((m) => visibleIds.has(m.id));
+  }
+
+  if (modelsDevInfo) {
+    models = models.filter((m) => modelsDevInfo[m.id]?.status !== 'deprecated');
+  }
+
+  if (publicMode) {
+    models = models.filter((m) => isFreeModel(m.id, modelsDevInfo?.[m.id]));
+  }
+
+  return models;
+}
+
+const BASE62 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+
+function canonicalId(prefix: 'ses_' | 'msg_'): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  const hexPart = Array.from(bytes.subarray(0, 6), (b) => b.toString(16).padStart(2, '0')).join('');
+  const b62Part = Array.from(bytes.subarray(6, 20), (b) => BASE62[b % 62]).join('');
+  return `${prefix}${hexPart}${b62Part}`;
 }
 
 function opencodeHeaders(): Record<string, string> {
-  const id = () => crypto.randomUUID().replace(/-/g, '').slice(0, 26);
   return {
-    'User-Agent': 'opencode/latest/1.3.15/cli',
+    'User-Agent': 'opencode/1.18.31',
     'x-opencode-client': 'cli',
-    'x-opencode-session': id(),
-    'x-opencode-project': id(),
-    'x-opencode-request': id(),
+    'x-opencode-session': canonicalId('ses_'),
+    'x-opencode-request': canonicalId('msg_'),
+    'x-opencode-project': 'global',
+    Accept: 'text/event-stream',
   };
+}
+
+function ensureOpencodeGateTools(context: TranscriptContext): TranscriptContext {
+  const messages = [...context.messages];
+  const first = messages[0];
+  const gateTools: Tool[] = [
+    {
+      name: 'bash',
+      description: 'Execute bash command',
+      parameters: Type.Object({ command: Type.String() }),
+    },
+    {
+      name: 'read',
+      description: 'Read file',
+      parameters: Type.Object({ path: Type.String() }),
+    },
+  ];
+
+  if (first && first.role === 'system') {
+    const existing = first.toolsAdded ?? [];
+    const existingNames = new Set(existing.map((t) => t.name));
+    const missing = gateTools.filter((t) => !existingNames.has(t.name));
+    if (missing.length > 0) {
+      const updatedFirst: SystemMessage = {
+        ...first,
+        toolsAdded: [...existing, ...missing],
+      };
+      messages[0] = updatedFirst;
+    }
+  } else {
+    const initialMessage: SystemMessage = {
+      role: 'system',
+      content: '',
+      toolsAdded: gateTools,
+      timestamp: 0,
+    };
+    messages.unshift(initialMessage);
+  }
+
+  return { ...context, messages };
+}
+
+function getEndpointConfig(modelId: string): EndpointConfig {
+  if (endpoints[modelId]) return endpoints[modelId];
+  if (modelId.startsWith('claude-')) return { api: 'anthropic-messages', baseUrl: BASE_URL };
+  if (modelId.startsWith('gemini-')) return { api: 'google-generative-ai', baseUrl: BASE_URL };
+  if (modelId.startsWith('gpt-') || modelId.startsWith('muse-')) {
+    return { api: 'openai-responses', baseUrl: BASE_URL };
+  }
+  return { api: 'openai-completions', baseUrl: BASE_URL };
 }
 
 function streamOpencodeZen(
@@ -536,10 +659,11 @@ function streamOpencodeZen(
   context: TranscriptContext,
   options?: SimpleStreamOptions,
 ): AssistantMessageEventStream {
-  const endpoint = endpoints[model.id];
-  if (!endpoint || model.provider !== 'opencode-zen') {
+  if (model.provider !== 'opencode-zen') {
     return openAICompletionsApi().streamSimple(model, context, options);
   }
+
+  const endpoint = getEndpointConfig(model.id);
 
   const wrappedModel = {
     ...model,
@@ -549,18 +673,20 @@ function streamOpencodeZen(
 
   const wrappedOptions: SimpleStreamOptions = {
     ...options,
-    headers: { ...opencodeHeaders(), ...options?.headers },
+    headers: { ...options?.headers, ...opencodeHeaders() },
   };
+
+  const gateContext = ensureOpencodeGateTools(context);
 
   switch (endpoint.api) {
     case 'anthropic-messages':
-      return anthropicMessagesApi().streamSimple(wrappedModel, context, wrappedOptions);
+      return anthropicMessagesApi().streamSimple(wrappedModel, gateContext, wrappedOptions);
     case 'google-generative-ai':
-      return googleGenerativeAIApi().streamSimple(wrappedModel, context, wrappedOptions);
+      return googleGenerativeAIApi().streamSimple(wrappedModel, gateContext, wrappedOptions);
     case 'openai-responses':
-      return openAIResponsesApi().streamSimple(wrappedModel, context, wrappedOptions);
+      return openAIResponsesApi().streamSimple(wrappedModel, gateContext, wrappedOptions);
     case 'openai-completions':
-      return openAICompletionsApi().streamSimple(wrappedModel, context, wrappedOptions);
+      return openAICompletionsApi().streamSimple(wrappedModel, gateContext, wrappedOptions);
   }
 }
 
