@@ -432,6 +432,11 @@ const endpoints: Record<string, EndpointConfig> = {
   'gemini-3.1-pro': { api: 'google-generative-ai', baseUrl: BASE_URL },
   'gemini-3-pro': { api: 'google-generative-ai', baseUrl: BASE_URL },
   'gemini-3-flash': { api: 'google-generative-ai', baseUrl: BASE_URL },
+  // Muse models - openai-responses
+  'muse-spark-1.3': { api: 'openai-responses', baseUrl: BASE_URL },
+  'muse-spark-1.3-contributor-free': { api: 'openai-responses', baseUrl: BASE_URL },
+  'muse-spark-1.2': { api: 'openai-responses', baseUrl: BASE_URL },
+  'muse-spark-1.2-contributor-free': { api: 'openai-responses', baseUrl: BASE_URL },
   // GLM models - openai-completions
   'glm-5': { api: 'openai-completions', baseUrl: BASE_URL },
   'glm-4.7': { api: 'openai-completions', baseUrl: BASE_URL },
@@ -643,7 +648,9 @@ function getEndpointConfig(modelId: string): EndpointConfig {
   if (endpoints[modelId]) return endpoints[modelId];
   if (modelId.startsWith('claude-')) return { api: 'anthropic-messages', baseUrl: BASE_URL };
   if (modelId.startsWith('gemini-')) return { api: 'google-generative-ai', baseUrl: BASE_URL };
-  if (modelId.startsWith('gpt-')) return { api: 'openai-responses', baseUrl: BASE_URL };
+  if (modelId.startsWith('gpt-') || modelId.startsWith('muse-')) {
+    return { api: 'openai-responses', baseUrl: BASE_URL };
+  }
   return { api: 'openai-completions', baseUrl: BASE_URL };
 }
 
